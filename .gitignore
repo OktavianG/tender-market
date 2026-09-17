@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv*/
+venv/
+
+# IDE and operating system
+.idea/
+.DS_Store
+
+# Generated data
+cache_eis/
+*.xlsx
+~$*
+*.log
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
