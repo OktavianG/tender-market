@@ -80,6 +80,9 @@ HEADERS = {
     "Accept-Language": "ru-RU,ru;q=0.9",
 }
 
+# ЕИС подписан сертификатом Минцифры (Russian Trusted Root CA), которому Python
+# по умолчанию не доверяет. Поэтому для запросов к ЕИС проверка SSL пока отключена
+# (см. get_html). Для Tender.Pro проверка включена.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -149,6 +152,7 @@ def get_html(url: str, params: dict[str, Any] | None = None) -> str | None:
         print(f"КЭШ: {prepared_url}")
         return cache_file.read_text(encoding="utf-8")
     try:
+        # verify=False только для ЕИС, причина описана рядом с disable_warnings.
         response = SESSION.get(url, params=params, timeout=TIMEOUT, verify=False)
         print(f"HTTP {response.status_code}: {response.url}")
         response.raise_for_status()
@@ -478,6 +482,21 @@ def normalized_product_name(value: str) -> str:
     return clean_text(value)[:250]
 
 
+# Excel считает формулой текст, который начинается с этих символов. Названия
+# закупок берутся с чужих сайтов, поэтому такой текст экранируем апострофом.
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def excel_safe(value: Any) -> Any:
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def append_safe(ws, values: list[Any]) -> None:
+    ws.append([excel_safe(value) for value in values])
+
+
 def style_sheet(ws, widths: dict[int, int] | None = None) -> None:
     fill = PatternFill("solid", fgColor="D9EAF7")
     for cell in ws[1]:
@@ -497,7 +516,7 @@ def add_products_sheet(wb: Workbook, title: str, products: list[dict[str, Any]])
     ws = wb.create_sheet(title)
     ws.append([label for _, label in COLUMNS])
     for product in products:
-        ws.append([product.get(key) for key, _ in COLUMNS])
+        append_safe(ws, [product.get(key) for key, _ in COLUMNS])
         link = ws.cell(ws.max_row, len(COLUMNS))
         link.value = "Открыть закупку"
         link.hyperlink = product["url"]
@@ -519,7 +538,7 @@ def add_product_summary(wb: Workbook, products: list[dict[str, Any]]) -> None:
     ws = wb.create_sheet("Сводка по товарам")
     ws.append(["Наименование товара", "ОКПД2", "Закупок", "Количество", "Сумма, ₽"])
     for item in sorted(grouped.values(), key=lambda x: x["amount"], reverse=True):
-        ws.append([item["name"], item["okpd"], len(item["tenders"]), item["qty"], item["amount"]])
+        append_safe(ws, [item["name"], item["okpd"], len(item["tenders"]), item["qty"], item["amount"]])
     style_sheet(ws, {1: 75, 2: 18, 3: 14, 4: 18, 5: 22})
 
 
@@ -533,7 +552,7 @@ def add_okpd_summary(wb: Workbook, products: list[dict[str, Any]]) -> None:
     ws = wb.create_sheet("Сводка ОКПД2")
     ws.append(["ОКПД2", "Позиций", "Закупок", "Сумма, ₽"])
     for code, item in sorted(grouped.items(), key=lambda x: x[1]["amount"], reverse=True):
-        ws.append([code, item["positions"], len(item["tenders"]), item["amount"]])
+        append_safe(ws, [code, item["positions"], len(item["tenders"]), item["amount"]])
     style_sheet(ws, {1: 20, 2: 14, 3: 14, 4: 22})
 
 
@@ -548,7 +567,7 @@ def add_customer_summary(wb: Workbook, products: list[dict[str, Any]]) -> None:
     ws = wb.create_sheet("Заказчики")
     ws.append(["Заказчик", "Закупок", "Позиций", "Сумма, ₽"])
     for customer, item in sorted(grouped.items(), key=lambda x: x[1]["amount"], reverse=True):
-        ws.append([customer, len(item["tenders"]), item["positions"], item["amount"]])
+        append_safe(ws, [customer, len(item["tenders"]), item["positions"], item["amount"]])
     style_sheet(ws, {1: 80, 2: 14, 3: 14, 4: 22})
 
 

@@ -58,7 +58,8 @@ def _get_html(
     params: dict[str, Any] | None = None,
 ) -> tuple[str | None, str]:
     try:
-        response = session.get(url, params=params, timeout=timeout, verify=False)
+        # У Tender.Pro обычный сертификат, поэтому проверка SSL включена.
+        response = session.get(url, params=params, timeout=timeout)
         print(f"HTTP {response.status_code}: {response.url}")
         response.raise_for_status()
         response.encoding = response.apparent_encoding or response.encoding
